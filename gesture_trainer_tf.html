@@ -1,0 +1,1014 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Gesture Trainer TF</title>
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.10.0/dist/tf.min.js"></script>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+body { 
+  background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+  min-height: 100vh;
+  font-family: system-ui, sans-serif;
+  color: #fff;
+  padding: 20px;
+}
+
+.container { max-width: 1200px; margin: 0 auto; }
+
+h1 { text-align: center; margin-bottom: 20px; font-size: 24px; }
+
+/* Language selector */
+#lang-selector {
+  position: fixed; top: 10px; right: 10px; z-index: 100;
+  display: flex; gap: 5px;
+}
+#lang-selector button {
+  padding: 6px 12px; border: 1px solid rgba(255,255,255,0.3);
+  border-radius: 6px; background: rgba(255,255,255,0.1);
+  color: #fff; cursor: pointer; font-size: 12px;
+}
+#lang-selector button.active {
+  background: rgba(100,100,255,0.4);
+  border-color: rgba(100,100,255,0.8);
+}
+
+/* Controls */
+.controls {
+  display: flex; gap: 10px; flex-wrap: wrap;
+  justify-content: center; margin-bottom: 20px;
+}
+.btn {
+  padding: 12px 20px; border: none; border-radius: 8px;
+  font-size: 14px; cursor: pointer; font-weight: 600;
+  transition: all 0.2s;
+}
+.btn-primary { background: #4a6cf7; color: #fff; }
+.btn-primary:hover { background: #5a7cf7; }
+.btn-primary:disabled { background: #555; cursor: not-allowed; }
+.btn-success { background: #22c55e; color: #fff; }
+.btn-success:hover { background: #32d56e; }
+.btn-danger { background: #ef4444; color: #fff; }
+.btn-danger:hover { background: #ff5454; }
+.btn-secondary { background: #6b7280; color: #fff; }
+.btn-secondary:hover { background: #7b8290; }
+.btn.connected { background: #22c55e; }
+
+/* Status */
+#status {
+  text-align: center; padding: 15px;
+  background: rgba(255,255,255,0.1);
+  border-radius: 10px; margin-bottom: 20px;
+  font-size: 14px;
+}
+#status.recording { background: rgba(239, 68, 68, 0.3); }
+#status.training { background: rgba(234, 179, 8, 0.3); }
+#status.ready { background: rgba(34, 197, 94, 0.3); }
+
+/* Gesture buttons */
+.gesture-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 10px; margin-bottom: 20px;
+}
+.gesture-btn {
+  position: relative;
+  padding: 15px; border: 2px solid rgba(255,255,255,0.2);
+  border-radius: 10px; background: rgba(255,255,255,0.05);
+  color: #fff; cursor: pointer; text-align: center;
+  transition: all 0.2s;
+}
+.gesture-btn:hover { background: rgba(255,255,255,0.1); }
+.gesture-btn.selected { 
+  border-color: #4a6cf7; 
+  background: rgba(74, 108, 247, 0.2);
+}
+.gesture-btn .icon { font-size: 32px; margin-bottom: 5px; }
+.gesture-btn .name { font-size: 12px; opacity: 0.8; }
+.gesture-btn .count { 
+  font-size: 18px; font-weight: 700;
+  color: #4a6cf7; margin-top: 5px;
+}
+.gesture-btn .clear-btn {
+  position: absolute;
+  top: 5px; right: 5px;
+  width: 24px; height: 24px;
+  border: none; border-radius: 50%;
+  background: rgba(239, 68, 68, 0.3);
+  color: #fff; font-size: 12px;
+  cursor: pointer; opacity: 0;
+  transition: all 0.2s;
+  display: flex; align-items: center; justify-content: center;
+}
+.gesture-btn:hover .clear-btn { opacity: 1; }
+.gesture-btn .clear-btn:hover { 
+  background: rgba(239, 68, 68, 0.8);
+  transform: scale(1.1);
+}
+
+/* Canvas */
+#oscilloscope {
+  width: 100%; height: 150px;
+  background: rgba(0,0,0,0.3);
+  border-radius: 10px; margin-bottom: 20px;
+}
+
+/* Training progress */
+#training-progress {
+  display: none;
+  background: rgba(255,255,255,0.1);
+  border-radius: 10px; padding: 20px;
+  margin-bottom: 20px; text-align: center;
+}
+#training-progress.show { display: block; }
+#progress-bar-bg {
+  width: 100%; height: 20px;
+  background: rgba(0,0,0,0.3);
+  border-radius: 10px; overflow: hidden;
+  margin: 10px 0;
+}
+#progress-bar {
+  height: 100%; width: 0%;
+  background: linear-gradient(90deg, #4a6cf7, #22c55e);
+  transition: width 0.3s;
+}
+#training-stats { font-size: 12px; opacity: 0.7; }
+
+/* Recognition result */
+#recognition {
+  text-align: center; padding: 20px;
+  background: rgba(255,255,255,0.1);
+  border-radius: 10px; margin-bottom: 20px;
+  display: none;
+}
+#recognition.show { display: block; }
+#recognition .result { font-size: 48px; margin-bottom: 10px; }
+#recognition .confidence { font-size: 14px; opacity: 0.7; }
+#recognition .latency { font-size: 12px; color: #22c55e; }
+
+/* Legend */
+.legend {
+  display: flex; gap: 15px; justify-content: center;
+  font-size: 12px; margin-bottom: 10px;
+}
+.legend span { display: flex; align-items: center; gap: 5px; }
+.legend .dot { width: 10px; height: 10px; border-radius: 50%; }
+.dot-gx { background: #ef4444; }
+.dot-gy { background: #22c55e; }
+.dot-gz { background: #3b82f6; }
+</style>
+</head>
+<body>
+
+<div id="lang-selector">
+  <button onclick="setLang('en')" id="lang-en">EN</button>
+  <button onclick="setLang('ru')" id="lang-ru">RU</button>
+  <button onclick="setLang('zh')" id="lang-zh">中文</button>
+</div>
+
+<div class="container">
+  <h1 data-i18n="title">⚡ Gesture Trainer TF</h1>
+  
+  <div id="status" data-i18n="statusConnect">Connect controller to start</div>
+  
+  <div class="controls">
+    <button class="btn btn-primary" id="ble-btn" onclick="connectBLE()" data-i18n="connect">
+      🎮 Connect Controller
+    </button>
+    <button class="btn btn-success" id="train-btn" onclick="trainModel()" disabled data-i18n="train">
+      🧠 Train Model
+    </button>
+    <button class="btn btn-secondary" onclick="exportModel()" data-i18n="export">
+      💾 Export Model
+    </button>
+    <button class="btn btn-secondary" onclick="document.getElementById('import-input').click()" data-i18n="import">
+      📂 Import Model
+    </button>
+    <input type="file" id="import-input" accept=".json" style="display:none" onchange="importModel(event)">
+  </div>
+  
+  <div class="legend">
+    <span><div class="dot dot-gx"></div> GX</span>
+    <span><div class="dot dot-gy"></div> GY</span>
+    <span><div class="dot dot-gz"></div> GZ</span>
+  </div>
+  <canvas id="oscilloscope"></canvas>
+  
+  <div id="training-progress">
+    <div data-i18n="training">Training model...</div>
+    <div id="progress-bar-bg"><div id="progress-bar"></div></div>
+    <div id="training-stats">Epoch: 0/50 | Loss: 0.000</div>
+  </div>
+  
+  <div id="recognition">
+    <div class="result" id="rec-result">👊</div>
+    <div class="confidence" id="rec-confidence">Confidence: 0%</div>
+    <div class="latency" id="rec-latency">Latency: 0ms</div>
+  </div>
+  
+  <p style="text-align:center; margin-bottom:15px; font-size:13px; opacity:0.7;" data-i18n="selectGesture">
+    Select gesture type and perform the motion to record
+  </p>
+  
+  <div class="gesture-grid" id="gesture-grid"></div>
+  
+  <div class="controls">
+    <button class="btn btn-danger" onclick="clearDataset()" data-i18n="clearAll">
+      🗑️ Clear All Data
+    </button>
+    <button class="btn btn-secondary" onclick="exportDataset()" data-i18n="exportData">
+      📤 Export Dataset
+    </button>
+    <button class="btn btn-secondary" onclick="document.getElementById('dataset-input').click()" data-i18n="importData">
+      📥 Import Dataset
+    </button>
+    <input type="file" id="dataset-input" accept=".json" style="display:none" onchange="importDataset(event)">
+  </div>
+</div>
+
+<script>
+// ══════════════════════════════════════════════════════════════════════════════
+// LOCALIZATION
+// ══════════════════════════════════════════════════════════════════════════════
+const translations = {
+  en: {
+    title: '⚡ Gesture Trainer TF',
+    connect: '🎮 Connect Controller',
+    train: '🧠 Train Model',
+    export: '💾 Export Model',
+    import: '📂 Import Model',
+    clearAll: '🗑️ Clear All Data',
+    exportData: '📤 Export Dataset',
+    importData: '📥 Import Dataset',
+    statusConnect: 'Connect controller to start',
+    statusReady: 'Ready! Select gesture and perform motion',
+    statusRecording: '🔴 RECORDING...',
+    statusTraining: '🧠 Training model...',
+    statusTrained: '✓ Model ready! Perform gestures to test',
+    selectGesture: 'Select gesture type and perform the motion to record',
+    training: 'Training model...',
+    jabRight: 'Jab Right',
+    jabLeft: 'Jab Left',
+    hookRight: 'Hook Right',
+    hookLeft: 'Hook Left',
+    noise: 'Noise'
+  },
+  ru: {
+    title: '⚡ Тренер жестов TF',
+    connect: '🎮 Подключить',
+    train: '🧠 Обучить',
+    export: '💾 Экспорт модели',
+    import: '📂 Импорт модели',
+    clearAll: '🗑️ Очистить всё',
+    exportData: '📤 Экспорт данных',
+    importData: '📥 Импорт данных',
+    statusConnect: 'Подключите контроллер',
+    statusReady: 'Готово! Выберите жест и выполните движение',
+    statusRecording: '🔴 ЗАПИСЬ...',
+    statusTraining: '🧠 Обучение модели...',
+    statusTrained: '✓ Модель готова! Выполните жесты для теста',
+    selectGesture: 'Выберите тип жеста и выполните движение для записи',
+    training: 'Обучение модели...',
+    jabRight: 'Джеб правой',
+    jabLeft: 'Джеб левой',
+    hookRight: 'Хук правой',
+    hookLeft: 'Хук левой',
+    noise: 'Шум'
+  },
+  zh: {
+    title: '⚡ 手势训练器 TF',
+    connect: '🎮 连接',
+    train: '🧠 训练',
+    export: '💾 导出模型',
+    import: '📂 导入模型',
+    clearAll: '🗑️ 清除所有',
+    exportData: '📤 导出数据',
+    importData: '📥 导入数据',
+    statusConnect: '连接控制器以开始',
+    statusReady: '准备就绪！选择手势并执行动作',
+    statusRecording: '🔴 录制中...',
+    statusTraining: '🧠 训练模型...',
+    statusTrained: '✓ 模型就绪！执行手势测试',
+    selectGesture: '选择手势类型并执行动作以记录',
+    training: '训练模型...',
+    jabRight: '右直拳',
+    jabLeft: '左直拳',
+    hookRight: '右勾拳',
+    hookLeft: '左勾拳',
+    noise: '噪音'
+  }
+};
+
+let currentLang = 'ru';
+function t(key) { return translations[currentLang][key] || key; }
+function setLang(lang) {
+  currentLang = lang;
+  document.querySelectorAll('#lang-selector button').forEach(b => b.classList.remove('active'));
+  document.getElementById('lang-' + lang).classList.add('active');
+  document.querySelectorAll('[data-i18n]').forEach(el => {
+    const key = el.getAttribute('data-i18n');
+    if (translations[lang][key]) el.textContent = translations[lang][key];
+  });
+  buildGestureGrid();
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// GESTURE TYPES (no noise class - use confidence threshold instead)
+// ══════════════════════════════════════════════════════════════════════════════
+const GESTURES = [
+  { id: 'jab_right', icon: '👊➡️', nameKey: 'jabRight' },
+  { id: 'jab_left', icon: '⬅️👊', nameKey: 'jabLeft' },
+  { id: 'hook_right', icon: '🪝➡️', nameKey: 'hookRight' },
+  { id: 'hook_left', icon: '⬅️🪝', nameKey: 'hookLeft' }
+];
+
+let selectedGesture = 'jab_right';
+const dataset = {};
+GESTURES.forEach(g => dataset[g.id] = []);
+
+function buildGestureGrid() {
+  const grid = document.getElementById('gesture-grid');
+  grid.innerHTML = '';
+  GESTURES.forEach(g => {
+    const btn = document.createElement('div');
+    btn.className = 'gesture-btn' + (g.id === selectedGesture ? ' selected' : '');
+    btn.innerHTML = `
+      <button class="clear-btn" onclick="clearGesture('${g.id}', event)" title="Clear">🗑️</button>
+      <div class="icon">${g.icon}</div>
+      <div class="name">${t(g.nameKey)}</div>
+      <div class="count" id="count-${g.id}">${dataset[g.id].length}</div>
+    `;
+    btn.onclick = (e) => {
+      if (!e.target.classList.contains('clear-btn')) {
+        selectGesture(g.id, e);
+      }
+    };
+    grid.appendChild(btn);
+  });
+}
+
+function selectGesture(id, e) {
+  selectedGesture = id;
+  document.querySelectorAll('.gesture-btn').forEach(b => b.classList.remove('selected'));
+  if (e && e.currentTarget) {
+    e.currentTarget.classList.add('selected');
+  }
+}
+
+function clearGesture(id, e) {
+  e.stopPropagation(); // Don't select the gesture
+  if (dataset[id].length === 0) return;
+  
+  if (confirm(`Clear all ${dataset[id].length} samples for ${GESTURES.find(g => g.id === id)?.icon || id}?`)) {
+    dataset[id] = [];
+    updateCounts();
+    
+    // Visual feedback
+    const countEl = document.getElementById('count-' + id);
+    if (countEl) {
+      countEl.style.color = '#ef4444';
+      setTimeout(() => countEl.style.color = '#4a6cf7', 300);
+    }
+  }
+}
+
+function updateCounts() {
+  GESTURES.forEach(g => {
+    const el = document.getElementById('count-' + g.id);
+    if (el) el.textContent = dataset[g.id].length;
+  });
+  
+  // Enable train button if we have enough data (at least 5 samples per class)
+  const totalSamples = Object.values(dataset).reduce((a, b) => a + b.length, 0);
+  const hasAllClasses = GESTURES.every(g => dataset[g.id].length >= 5);
+  document.getElementById('train-btn').disabled = !(totalSamples >= 20 && hasAllClasses);
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// OSCILLOSCOPE
+// ══════════════════════════════════════════════════════════════════════════════
+const canvas = document.getElementById('oscilloscope');
+const ctx = canvas.getContext('2d');
+const history = { gx: [], gy: [], gz: [] };
+const HISTORY_SIZE = 200;
+
+function resizeCanvas() {
+  canvas.width = canvas.offsetWidth * window.devicePixelRatio;
+  canvas.height = canvas.offsetHeight * window.devicePixelRatio;
+  ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
+}
+resizeCanvas();
+window.addEventListener('resize', resizeCanvas);
+
+function drawOscilloscope() {
+  const w = canvas.offsetWidth;
+  const h = canvas.offsetHeight;
+  
+  ctx.fillStyle = 'rgba(0,0,0,0.3)';
+  ctx.fillRect(0, 0, w, h);
+  
+  // Center line
+  ctx.strokeStyle = 'rgba(255,255,255,0.1)';
+  ctx.beginPath();
+  ctx.moveTo(0, h/2);
+  ctx.lineTo(w, h/2);
+  ctx.stroke();
+  
+  // Draw signals
+  const colors = { gx: '#ef4444', gy: '#22c55e', gz: '#3b82f6' };
+  const scale = h / 1000;
+  
+  ['gx', 'gy', 'gz'].forEach(axis => {
+    ctx.strokeStyle = colors[axis];
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    
+    history[axis].forEach((val, i) => {
+      const x = (i / HISTORY_SIZE) * w;
+      const y = h/2 - val * scale;
+      if (i === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    });
+    ctx.stroke();
+  });
+  
+  requestAnimationFrame(drawOscilloscope);
+}
+drawOscilloscope();
+
+// ══════════════════════════════════════════════════════════════════════════════
+// BLE CONNECTION
+// ══════════════════════════════════════════════════════════════════════════════
+const BLE_SERVICE = '6e400001-b5a3-f393-e0a9-e50e24dcca9e';
+const BLE_CHAR_TX = '6e400003-b5a3-f393-e0a9-e50e24dcca9e';
+
+let connected = false;
+const CALIB = { 
+  samples: [], collecting: false, done: false, 
+  gxOff: 0, gyOff: 0, gzOff: 0,
+  axOff: 0, ayOff: 0, azOff: 0
+};
+
+async function connectBLE() {
+  if (!navigator.bluetooth) { alert('Web Bluetooth not supported'); return; }
+  
+  try {
+    const device = await navigator.bluetooth.requestDevice({
+      filters: [{ name: 'FruitNinja' }],
+      optionalServices: [BLE_SERVICE]
+    });
+    
+    const server = await device.gatt.connect();
+    const service = await server.getPrimaryService(BLE_SERVICE);
+    const char = await service.getCharacteristic(BLE_CHAR_TX);
+    
+    await char.startNotifications();
+    char.addEventListener('characteristicvaluechanged', onIMU);
+    
+    connected = true;
+    document.getElementById('ble-btn').classList.add('connected');
+    document.getElementById('ble-btn').textContent = '✓ Connected';
+    setStatus('statusReady', 'ready');
+    CALIB.collecting = true;
+    
+  } catch(e) {
+    console.error(e);
+  }
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// MOTION DETECTION & RECORDING
+// ══════════════════════════════════════════════════════════════════════════════
+const WINDOW_SIZE = 50;  // 250ms at 200Hz
+const buffer = { gx: [], gy: [], gz: [], ax: [], ay: [], az: [] };
+
+let isRecording = false;
+let recordingStart = 0;
+let lastRecordTime = 0;
+const MOTION_THRESHOLD = 300;
+const MOTION_END = 100;
+const RECORD_COOLDOWN = 800;
+
+// Confidence threshold - reject if below this
+const CONFIDENCE_THRESHOLD = 0.70;
+
+// Energy tracking for punch validation
+let peakEnergy = 0;
+let energyHistory = [];
+const ENERGY_HISTORY_SIZE = 20;
+const MIN_PEAK_ENERGY = 400; // Minimum peak gyro magnitude for valid punch
+
+function onIMU(event) {
+  let d;
+  try { d = JSON.parse(new TextDecoder().decode(event.target.value)); } catch(e) { return; }
+  
+  const gx = d.gx || 0, gy = d.gy || 0, gz = d.gz || 0;
+  const ax = d.ax || 0, ay = d.ay || 0, az = d.az || 0;
+  
+  // Calibration (collect 100 samples at rest)
+  if (CALIB.collecting) {
+    CALIB.samples.push({ gx, gy, gz, ax, ay, az });
+    if (d.cal || CALIB.samples.length >= 100) {
+      let sGx=0, sGy=0, sGz=0, sAx=0, sAy=0, sAz=0;
+      CALIB.samples.forEach(s => { 
+        sGx+=s.gx; sGy+=s.gy; sGz+=s.gz;
+        sAx+=s.ax; sAy+=s.ay; sAz+=s.az;
+      });
+      const n = CALIB.samples.length;
+      CALIB.gxOff = sGx/n; CALIB.gyOff = sGy/n; CALIB.gzOff = sGz/n;
+      CALIB.axOff = sAx/n; CALIB.ayOff = sAy/n; CALIB.azOff = sAz/n - 1; // gravity in g
+      CALIB.collecting = false;
+      CALIB.done = true;
+    }
+    return;
+  }
+  
+  if (!CALIB.done) return;
+  
+  const cgx = gx - CALIB.gxOff;
+  const cgy = gy - CALIB.gyOff;
+  const cgz = gz - CALIB.gzOff;
+  const cax = ax - CALIB.axOff;
+  const cay = ay - CALIB.ayOff;
+  const caz = az - CALIB.azOff;
+  
+  // Update history (for oscilloscope)
+  history.gx.push(cgx); history.gy.push(cgy); history.gz.push(cgz);
+  while (history.gx.length > HISTORY_SIZE) {
+    history.gx.shift(); history.gy.shift(); history.gz.shift();
+  }
+  
+  // Buffer for recording (gyro + accel)
+  buffer.gx.push(cgx); buffer.gy.push(cgy); buffer.gz.push(cgz);
+  buffer.ax.push(cax); buffer.ay.push(cay); buffer.az.push(caz);
+  while (buffer.gx.length > WINDOW_SIZE) {
+    buffer.gx.shift(); buffer.gy.shift(); buffer.gz.shift();
+    buffer.ax.shift(); buffer.ay.shift(); buffer.az.shift();
+  }
+  
+  const gyroMag = Math.sqrt(cgx*cgx + cgy*cgy + cgz*cgz);
+  const now = performance.now();
+  
+  // Track energy history for punch validation
+  energyHistory.push(gyroMag);
+  while (energyHistory.length > ENERGY_HISTORY_SIZE) energyHistory.shift();
+  
+  // Auto-detect motion
+  if (!isRecording && modelTrained) {
+    // If model is trained, do recognition instead
+    if (gyroMag > MOTION_THRESHOLD && now - lastRecordTime > RECORD_COOLDOWN) {
+      isRecording = true;
+      recordingStart = now;
+      peakEnergy = gyroMag;
+    }
+  } else if (!isRecording && !modelTrained) {
+    // Recording mode
+    if (gyroMag > MOTION_THRESHOLD && now - lastRecordTime > RECORD_COOLDOWN) {
+      isRecording = true;
+      recordingStart = now;
+      peakEnergy = gyroMag;
+      setStatus('statusRecording', 'recording');
+    }
+  }
+  
+  if (isRecording) {
+    // Track peak energy during motion
+    if (gyroMag > peakEnergy) peakEnergy = gyroMag;
+    
+    const duration = now - recordingStart;
+    
+    if (gyroMag < MOTION_END && duration > 80) {
+      // End of motion - validate before processing
+      isRecording = false;
+      lastRecordTime = now;
+      
+      // Check if motion had enough energy (real punch vs small movement)
+      const isValidPunch = peakEnergy >= MIN_PEAK_ENERGY && duration >= 50 && duration <= 800;
+      
+      if (modelTrained) {
+        if (isValidPunch) {
+          recognizeGesture();
+        } else {
+          // Show rejected (too weak)
+          setStatus('statusReady', 'ready');
+        }
+      } else {
+        if (isValidPunch) {
+          saveSample();
+        }
+        setStatus('statusReady', 'ready');
+      }
+      
+      peakEnergy = 0;
+    } else if (duration > 1000) {
+      // Timeout
+      isRecording = false;
+      lastRecordTime = now;
+      peakEnergy = 0;
+      setStatus('statusReady', 'ready');
+    }
+  }
+}
+
+function saveSample() {
+  if (buffer.gx.length < 20) return;
+  
+  const sample = {
+    gx: [...buffer.gx],
+    gy: [...buffer.gy],
+    gz: [...buffer.gz],
+    ax: [...buffer.ax],
+    ay: [...buffer.ay],
+    az: [...buffer.az],
+    timestamp: Date.now()
+  };
+  
+  dataset[selectedGesture].push(sample);
+  updateCounts();
+  
+  // Visual feedback
+  const countEl = document.getElementById('count-' + selectedGesture);
+  if (countEl) {
+    countEl.style.transform = 'scale(1.3)';
+    setTimeout(() => countEl.style.transform = 'scale(1)', 200);
+  }
+}
+
+function setStatus(key, type) {
+  const status = document.getElementById('status');
+  status.textContent = t(key);
+  status.className = type || '';
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// TENSORFLOW MODEL - Enhanced with 6-axis input and statistical features
+// ══════════════════════════════════════════════════════════════════════════════
+let model = null;
+let modelTrained = false;
+
+// Feature count: 50 timesteps * 6 axes + 12 statistical features = 312 features
+const NUM_FEATURES = WINDOW_SIZE * 6 + 12;
+
+function createModel() {
+  const numClasses = GESTURES.length;
+  
+  model = tf.sequential({
+    layers: [
+      // Input: 50*6 + 12 statistical features = 312
+      tf.layers.dense({ inputShape: [NUM_FEATURES], units: 128, activation: 'relu', kernelRegularizer: tf.regularizers.l2({l2: 0.001}) }),
+      tf.layers.batchNormalization(),
+      tf.layers.dropout({ rate: 0.4 }),
+      tf.layers.dense({ units: 64, activation: 'relu', kernelRegularizer: tf.regularizers.l2({l2: 0.001}) }),
+      tf.layers.batchNormalization(),
+      tf.layers.dropout({ rate: 0.3 }),
+      tf.layers.dense({ units: 32, activation: 'relu' }),
+      tf.layers.dropout({ rate: 0.2 }),
+      tf.layers.dense({ units: numClasses, activation: 'softmax' })
+    ]
+  });
+  
+  model.compile({
+    optimizer: tf.train.adam(0.0005),
+    loss: 'categoricalCrossentropy',
+    metrics: ['accuracy']
+  });
+  
+  return model;
+}
+
+function prepareData() {
+  const X = [];
+  const Y = [];
+  
+  GESTURES.forEach((gesture, classIdx) => {
+    dataset[gesture.id].forEach(sample => {
+      const features = extractFeatures(sample);
+      if (features) {
+        X.push(features);
+        const label = new Array(GESTURES.length).fill(0);
+        label[classIdx] = 1;
+        Y.push(label);
+      }
+    });
+  });
+  
+  // Shuffle
+  const indices = X.map((_, i) => i);
+  for (let i = indices.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [indices[i], indices[j]] = [indices[j], indices[i]];
+  }
+  
+  const shuffledX = indices.map(i => X[i]);
+  const shuffledY = indices.map(i => Y[i]);
+  
+  return {
+    X: tf.tensor2d(shuffledX),
+    Y: tf.tensor2d(shuffledY)
+  };
+}
+
+function extractFeatures(sample) {
+  // Resample all 6 axes
+  const gx = resample(sample.gx, WINDOW_SIZE);
+  const gy = resample(sample.gy, WINDOW_SIZE);
+  const gz = resample(sample.gz, WINDOW_SIZE);
+  const ax = resample(sample.ax || new Array(sample.gx.length).fill(0), WINDOW_SIZE);
+  const ay = resample(sample.ay || new Array(sample.gx.length).fill(0), WINDOW_SIZE);
+  const az = resample(sample.az || new Array(sample.gx.length).fill(0), WINDOW_SIZE);
+  
+  if (!gx || !gy || !gz) return null;
+  
+  // Normalize each axis independently
+  const normalize = arr => {
+    const max = Math.max(...arr.map(Math.abs)) || 1;
+    return arr.map(v => v / max);
+  };
+  
+  const nGx = normalize(gx);
+  const nGy = normalize(gy);
+  const nGz = normalize(gz);
+  const nAx = normalize(ax);
+  const nAy = normalize(ay);
+  const nAz = normalize(az);
+  
+  // Flatten time series: [gx0,gy0,gz0,ax0,ay0,az0, gx1,gy1,gz1,ax1,ay1,az1, ...]
+  const features = [];
+  for (let i = 0; i < WINDOW_SIZE; i++) {
+    features.push(nGx[i], nGy[i], nGz[i], nAx[i], nAy[i], nAz[i]);
+  }
+  
+  // Add statistical features (helps distinguish gesture types)
+  const stats = (arr) => {
+    const sum = arr.reduce((a,b) => a+b, 0);
+    const mean = sum / arr.length;
+    const variance = arr.reduce((a,b) => a + (b-mean)**2, 0) / arr.length;
+    return { mean, std: Math.sqrt(variance), max: Math.max(...arr), min: Math.min(...arr) };
+  };
+  
+  // Gyro magnitude over time (degrees/sec)
+  const gyroMag = gx.map((v, i) => Math.sqrt(v*v + gy[i]*gy[i] + gz[i]*gz[i]));
+  const gStats = stats(gyroMag);
+  
+  // Accel magnitude (in g, typically 0-4g for punches)
+  const accelMag = ax.map((v, i) => Math.sqrt(v*v + ay[i]*ay[i] + az[i]*az[i]));
+  const aStats = stats(accelMag);
+  
+  // Add 12 statistical features (normalized to ~[-1, 1] range)
+  features.push(
+    gStats.mean / 500, gStats.std / 500, gStats.max / 1000, // gyro stats (deg/s)
+    aStats.mean / 4, aStats.std / 4, aStats.max / 8, // accel stats (g units)
+    nGx.reduce((a,b) => a+b, 0) / WINDOW_SIZE, // mean gx
+    nGy.reduce((a,b) => a+b, 0) / WINDOW_SIZE, // mean gy
+    nGz.reduce((a,b) => a+b, 0) / WINDOW_SIZE, // mean gz
+    nAx.reduce((a,b) => a+b, 0) / WINDOW_SIZE, // mean ax
+    nAy.reduce((a,b) => a+b, 0) / WINDOW_SIZE, // mean ay
+    nAz.reduce((a,b) => a+b, 0) / WINDOW_SIZE  // mean az
+  );
+  
+  return features;
+}
+
+function resample(arr, targetLen) {
+  if (!arr || arr.length === 0) return null;
+  if (arr.length === targetLen) return [...arr];
+  
+  const result = [];
+  const step = arr.length / targetLen;
+  for (let i = 0; i < targetLen; i++) {
+    const idx = Math.min(Math.floor(i * step), arr.length - 1);
+    result.push(arr[idx]);
+  }
+  return result;
+}
+
+async function trainModel() {
+  const trainBtn = document.getElementById('train-btn');
+  trainBtn.disabled = true;
+  
+  document.getElementById('training-progress').classList.add('show');
+  setStatus('statusTraining', 'training');
+  
+  createModel();
+  const { X, Y } = prepareData();
+  
+  const epochs = 100; // More epochs for better convergence
+  
+  await model.fit(X, Y, {
+    epochs: epochs,
+    batchSize: 32,
+    validationSplit: 0.2,
+    shuffle: true,
+    callbacks: {
+      onEpochEnd: (epoch, logs) => {
+        const progress = ((epoch + 1) / epochs) * 100;
+        document.getElementById('progress-bar').style.width = progress + '%';
+        const valAcc = logs.val_acc !== undefined ? ` | Val: ${(logs.val_acc * 100).toFixed(1)}%` : '';
+        document.getElementById('training-stats').textContent = 
+          `Epoch: ${epoch + 1}/${epochs} | Loss: ${logs.loss.toFixed(4)} | Acc: ${(logs.acc * 100).toFixed(1)}%${valAcc}`;
+      }
+    }
+  });
+  
+  X.dispose();
+  Y.dispose();
+  
+  modelTrained = true;
+  document.getElementById('training-progress').classList.remove('show');
+  document.getElementById('recognition').classList.add('show');
+  setStatus('statusTrained', 'ready');
+  trainBtn.disabled = false;
+}
+
+async function recognizeGesture() {
+  if (!model || !modelTrained) return;
+  
+  const startTime = performance.now();
+  
+  const features = extractFeatures({
+    gx: [...buffer.gx],
+    gy: [...buffer.gy],
+    gz: [...buffer.gz],
+    ax: [...buffer.ax],
+    ay: [...buffer.ay],
+    az: [...buffer.az]
+  });
+  
+  if (!features) return;
+  
+  const input = tf.tensor2d([features]);
+  const prediction = model.predict(input);
+  const probs = await prediction.data();
+  input.dispose();
+  prediction.dispose();
+  
+  const latency = performance.now() - startTime;
+  
+  // Find best match and second best
+  let maxIdx = 0, maxProb = 0, secondProb = 0;
+  probs.forEach((p, i) => {
+    if (p > maxProb) {
+      secondProb = maxProb;
+      maxProb = p;
+      maxIdx = i;
+    } else if (p > secondProb) {
+      secondProb = p;
+    }
+  });
+  
+  const gesture = GESTURES[maxIdx];
+  const margin = maxProb - secondProb; // How much better than second choice
+  
+  // Show result with confidence color coding
+  const recEl = document.getElementById('recognition');
+  const resultEl = document.getElementById('rec-result');
+  const confEl = document.getElementById('rec-confidence');
+  const latEl = document.getElementById('rec-latency');
+  
+  confEl.textContent = `Confidence: ${(maxProb * 100).toFixed(1)}% (margin: ${(margin * 100).toFixed(0)}%)`;
+  latEl.textContent = `Latency: ${latency.toFixed(1)}ms | Peak: ${peakEnergy.toFixed(0)}`;
+  
+  // Stricter validation: need high confidence AND good margin
+  const isConfident = maxProb >= CONFIDENCE_THRESHOLD && margin >= 0.15;
+  
+  if (isConfident) {
+    // Accepted - green
+    resultEl.textContent = gesture.icon;
+    resultEl.style.opacity = '1';
+    recEl.style.background = 'rgba(34, 197, 94, 0.3)';
+  } else {
+    // Rejected as uncertain - red with ❌
+    resultEl.textContent = '❌ ' + gesture.icon;
+    resultEl.style.opacity = '0.5';
+    recEl.style.background = 'rgba(239, 68, 68, 0.3)';
+  }
+  
+  setTimeout(() => recEl.style.background = 'rgba(255,255,255,0.1)', 400);
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// IMPORT/EXPORT
+// ══════════════════════════════════════════════════════════════════════════════
+function clearDataset() {
+  if (!confirm('Clear all recorded data?')) return;
+  GESTURES.forEach(g => dataset[g.id] = []);
+  updateCounts();
+  modelTrained = false;
+  document.getElementById('recognition').classList.remove('show');
+}
+
+function exportDataset() {
+  const json = JSON.stringify(dataset, null, 2);
+  const blob = new Blob([json], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'gesture_dataset_tf.json';
+  a.click();
+}
+
+function importDataset(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    try {
+      const data = JSON.parse(e.target.result);
+      GESTURES.forEach(g => {
+        if (data[g.id]) dataset[g.id] = data[g.id];
+      });
+      updateCounts();
+    } catch(err) {
+      console.error(err);
+    }
+  };
+  reader.readAsText(file);
+}
+
+async function exportModel() {
+  if (!model || !modelTrained) {
+    alert('Train model first!');
+    return;
+  }
+  
+  // Export weights as JSON
+  const weights = [];
+  for (const layer of model.layers) {
+    const layerWeights = layer.getWeights();
+    const layerData = [];
+    for (const w of layerWeights) {
+      const data = await w.data();
+      layerData.push({
+        shape: w.shape,
+        data: Array.from(data)
+      });
+    }
+    weights.push(layerData);
+  }
+  
+  const modelData = {
+    type: 'gesture_model_tf',
+    version: 1,
+    windowSize: WINDOW_SIZE,
+    gestures: GESTURES.map(g => g.id),
+    weights: weights
+  };
+  
+  const json = JSON.stringify(modelData);
+  const blob = new Blob([json], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'gesture_model_tf.json';
+  a.click();
+}
+
+async function importModel(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  
+  const reader = new FileReader();
+  reader.onload = async (e) => {
+    try {
+      const data = JSON.parse(e.target.result);
+      if (data.type !== 'gesture_model_tf') {
+        alert('Invalid model file');
+        return;
+      }
+      
+      createModel();
+      
+      // Load weights
+      let layerIdx = 0;
+      for (const layer of model.layers) {
+        if (data.weights[layerIdx] && data.weights[layerIdx].length > 0) {
+          const tensors = data.weights[layerIdx].map(w => 
+            tf.tensor(w.data, w.shape)
+          );
+          layer.setWeights(tensors);
+          tensors.forEach(t => t.dispose());
+        }
+        layerIdx++;
+      }
+      
+      modelTrained = true;
+      document.getElementById('recognition').classList.add('show');
+      setStatus('statusTrained', 'ready');
+      
+    } catch(err) {
+      console.error(err);
+      alert('Error loading model');
+    }
+  };
+  reader.readAsText(file);
+}
+
+// Init
+setLang('ru');
+buildGestureGrid();
+updateCounts();
+</script>
+</body>
+</html>

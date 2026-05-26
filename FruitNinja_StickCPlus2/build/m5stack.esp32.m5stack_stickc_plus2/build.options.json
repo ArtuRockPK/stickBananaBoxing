@@ -1,0 +1,10 @@
+{
+  "additionalFiles": "",
+  "builtInLibrariesFolders": "C:\\Users\\Arturock\\AppData\\Local\\Arduino15\\libraries",
+  "compiler.optimization_flags": "-Os",
+  "customBuildProperties": "build.warn_data_percentage=75",
+  "fqbn": "m5stack:esp32:m5stack_stickc_plus2:UploadSpeed=1500000,CPUFreq=240,FlashFreq=80,FlashMode=qio,FlashSize=8M,PartitionScheme=default_8MB,DebugLevel=none,PSRAM=enabled,LoopCore=1,EventsCore=1,EraseFlash=none",
+  "hardwareFolders": "c:\\Users\\Arturock\\AppData\\Local\\Arduino15\\packages",
+  "otherLibrariesFolders": "c:\\Users\\Arturock\\Documents\\Arduino\\libraries\\libraries",
+  "sketchLocation": "C:\\Users\\Arturock\\Downloads\\FruitNinja_StickCPlus2"
+}

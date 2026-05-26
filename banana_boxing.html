@@ -1,0 +1,1219 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Banana Boxing</title>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+body { background:#000; overflow:hidden; font-family: system-ui, sans-serif; color:#fff; }
+canvas { display:block; }
+
+/* Language selector */
+#lang-selector {
+  position:fixed; top:10px; right:10px; z-index:100;
+  display:flex; gap:5px;
+}
+#lang-selector button {
+  padding:6px 12px; border:1px solid rgba(255,255,255,0.3);
+  border-radius:6px; background:rgba(255,255,255,0.1);
+  color:#fff; cursor:pointer; font-size:12px;
+}
+#lang-selector button.active {
+  background:rgba(100,100,255,0.4);
+  border-color:rgba(100,100,255,0.8);
+}
+
+/* Controls panel */
+#controls {
+  position:fixed; top:10px; left:10px; z-index:100;
+  display:flex; flex-direction:column; gap:8px;
+}
+.ctrl-btn {
+  padding:10px 16px; border:1px solid rgba(255,255,255,0.3);
+  border-radius:8px; background:rgba(0,0,0,0.6);
+  color:#fff; cursor:pointer; font-size:13px;
+  backdrop-filter:blur(4px);
+}
+.ctrl-btn:hover { background:rgba(50,50,50,0.8); }
+.ctrl-btn.connected { border-color:#5f5; color:#5f5; }
+.ctrl-btn.loaded { border-color:#88f; color:#88f; }
+
+/* HP Bar */
+#hp-container {
+  position:fixed; top:80px; left:50%; transform:translateX(-50%);
+  text-align:center; z-index:50;
+}
+#hp-label {
+  font-size:14px; color:rgba(255,255,255,0.7);
+  margin-bottom:4px;
+}
+#hp-bar-bg {
+  position:relative;
+  width:300px; height:24px; background:rgba(0,0,0,0.5);
+  border-radius:12px; border:2px solid rgba(255,255,255,0.3);
+  overflow:hidden;
+}
+#hp-bar {
+  height:100%; width:100%; background:linear-gradient(90deg, #ff4444, #ff8844);
+  border-radius:10px; transition:width 0.2s;
+}
+#hp-text {
+  position:absolute; top:50%; left:50%;
+  transform:translate(-50%,-50%);
+  font-size:14px; font-weight:700; text-shadow:0 1px 2px #000;
+  white-space:nowrap;
+}
+
+/* Critical hit */
+#critical-hit {
+  position:fixed; top:40%; left:50%;
+  transform:translate(-50%,-50%) scale(0);
+  font-size:48px; font-weight:700;
+  color:#ff0000; 
+  pointer-events:none; z-index:70;
+  opacity:0; text-align:center;
+  text-shadow: 0 0 30px #ff0000, 0 0 60px #ff4400;
+  animation-fill-mode: forwards;
+}
+#critical-hit.show {
+  animation: criticalPop 1.5s ease-out;
+}
+@keyframes criticalPop {
+  0% { transform:translate(-50%,-50%) scale(0); opacity:0; }
+  15% { transform:translate(-50%,-50%) scale(1.3); opacity:1; }
+  30% { transform:translate(-50%,-50%) scale(1); opacity:1; }
+  100% { transform:translate(-50%,-50%) scale(1); opacity:0; }
+}
+
+/* Hit indicator */
+#hit-indicator {
+  position:fixed; top:50%; left:50%;
+  transform:translate(-50%,-50%) scale(0);
+  font-size:64px; font-weight:700;
+  pointer-events:none; z-index:60;
+  opacity:0; text-align:center;
+  text-shadow: 0 0 30px currentColor;
+}
+
+/* Combo */
+#combo-container {
+  position:fixed; top:120px; right:20px;
+  text-align:center; z-index:50;
+}
+#combo-count {
+  font-size:48px; font-weight:700; color:#ffcc00;
+  text-shadow: 0 0 20px #ff8800;
+}
+#combo-label {
+  font-size:12px; color:rgba(255,255,255,0.6);
+  text-transform:uppercase;
+}
+
+/* Victory/Defeat */
+#game-over {
+  display:none; position:fixed; inset:0;
+  background:rgba(0,0,0,0.8);
+  align-items:center; justify-content:center;
+  flex-direction:column; gap:20px; z-index:200;
+}
+#game-over.show { display:flex; }
+#game-over h1 { font-size:64px; }
+#game-over button {
+  padding:15px 40px; font-size:18px;
+  border:none; border-radius:30px;
+  background:#fff; color:#000;
+  cursor:pointer; font-weight:600;
+}
+
+/* Damage flash */
+#damage-flash {
+  position:fixed; inset:0; pointer-events:none; z-index:40;
+  background:rgba(255,0,0,0);
+}
+</style>
+</head>
+<body>
+
+<div id="lang-selector">
+  <button onclick="setLang('en')" id="lang-en">EN</button>
+  <button onclick="setLang('ru')" id="lang-ru">RU</button>
+  <button onclick="setLang('zh')" id="lang-zh">中文</button>
+</div>
+
+<div id="controls">
+  <input type="file" id="file-input" accept=".json" style="display:none" onchange="loadModel(event)">
+  <button class="ctrl-btn" id="dataset-btn" onclick="document.getElementById('file-input').click()" data-i18n="loadModel">
+    🧠 Загрузить TF модель
+  </button>
+  <button class="ctrl-btn" id="ble-btn" onclick="connectBLE()" data-i18n="connectController">
+    🎮 Подключить контроллер
+  </button>
+</div>
+
+<div id="hp-container">
+  <div id="hp-label">🍌 BANANA</div>
+  <div id="hp-bar-bg">
+    <div id="hp-bar"></div>
+    <div id="hp-text">1000 / 1000</div>
+  </div>
+</div>
+
+<div id="combo-container">
+  <div id="combo-count">0</div>
+  <div id="combo-label">COMBO</div>
+</div>
+
+<div id="hit-indicator"></div>
+<div id="critical-hit">💥 CRITICAL HIT! 💥</div>
+<div id="damage-flash"></div>
+
+<div id="game-over">
+  <h1 id="game-over-title">🏆 ПОБЕДА!</h1>
+  <button onclick="restartGame()" data-i18n="playAgain">Играть снова</button>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.10.0/dist/tf.min.js"></script>
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.152.0/build/three.module.js"
+  }
+}
+</script>
+<script type="module">
+import * as THREE from 'three';
+
+// Make THREE global for compatibility
+window.THREE = THREE;
+// ══════════════════════════════════════════════════════════════════════════════
+// LOCALIZATION
+// ══════════════════════════════════════════════════════════════════════════════
+const translations = {
+  en: {
+    loadModel: '🧠 Load TF Model',
+    connectController: '🎮 Connect Controller',
+    scanning: '🔍 Scanning...',
+    connected: '✓ Connected',
+    modelLoaded: '✓ Model Loaded',
+    playAgain: 'Play Again',
+    victory: '🏆 VICTORY!',
+    knockedOut: 'KNOCKED OUT!',
+    criticalHit: '💥 CRITICAL HIT! 💥',
+    jabRight: 'Jab Right',
+    jabLeft: 'Jab Left',
+    hookRight: 'Hook Right',
+    hookLeft: 'Hook Left'
+  },
+  ru: {
+    loadModel: '🧠 Загрузить TF модель',
+    connectController: '🎮 Подключить контроллер',
+    scanning: '🔍 Поиск...',
+    connected: '✓ Подключено',
+    modelLoaded: '✓ Модель загружена',
+    playAgain: 'Играть снова',
+    victory: '🏆 ПОБЕДА!',
+    knockedOut: 'НОКАУТ!',
+    criticalHit: '💥 КРИТИЧЕСКИЙ УДАР! 💥',
+    jabRight: 'Джеб правой',
+    jabLeft: 'Джеб левой',
+    hookRight: 'Хук правой',
+    hookLeft: 'Хук левой'
+  },
+  zh: {
+    loadModel: '🧠 加载TF模型',
+    connectController: '🎮 连接控制器',
+    scanning: '🔍 扫描中...',
+    connected: '✓ 已连接',
+    modelLoaded: '✓ 模型已加载',
+    playAgain: '再玩一次',
+    victory: '🏆 胜利!',
+    knockedOut: '击倒!',
+    criticalHit: '💥 暴击! 💥',
+    jabRight: '右直拳',
+    jabLeft: '左直拳',
+    hookRight: '右勾拳',
+    hookLeft: '左勾拳'
+  }
+};
+
+let currentLang = 'ru';
+
+function setLang(lang) {
+  currentLang = lang;
+  document.querySelectorAll('#lang-selector button').forEach(btn => {
+    btn.classList.toggle('active', btn.id === 'lang-' + lang);
+  });
+  document.querySelectorAll('[data-i18n]').forEach(el => {
+    const key = el.getAttribute('data-i18n');
+    if (translations[lang][key]) el.textContent = translations[lang][key];
+  });
+}
+
+function t(key) {
+  return translations[currentLang][key] || translations['en'][key] || key;
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// THREE.JS SCENE
+// ══════════════════════════════════════════════════════════════════════════════
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.shadowMap.enabled = true;
+document.body.appendChild(renderer.domElement);
+
+window.addEventListener('resize', () => {
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+});
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x87CEEB);
+scene.fog = new THREE.Fog(0x87CEEB, 20, 60);
+
+const camera = new THREE.PerspectiveCamera(60, innerWidth/innerHeight, 0.1, 100);
+camera.position.set(0, 1.6, 3);
+camera.lookAt(0, 1.2, 0);
+
+// Lights
+scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+const sun = new THREE.DirectionalLight(0xffffff, 1);
+sun.position.set(5, 10, 5);
+sun.castShadow = true;
+scene.add(sun);
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ENVIRONMENT — Beach
+// ══════════════════════════════════════════════════════════════════════════════
+// Ocean
+const ocean = new THREE.Mesh(
+  new THREE.PlaneGeometry(100, 100),
+  new THREE.MeshLambertMaterial({ color: 0x1a7fbf })
+);
+ocean.rotation.x = -Math.PI / 2;
+ocean.position.y = -0.5;
+scene.add(ocean);
+
+// Sand
+const sand = new THREE.Mesh(
+  new THREE.CircleGeometry(15, 32),
+  new THREE.MeshLambertMaterial({ color: 0xedc870 })
+);
+sand.rotation.x = -Math.PI / 2;
+sand.position.y = 0.01;
+scene.add(sand);
+
+// Boxing ring (simple)
+const ringMat = new THREE.MeshLambertMaterial({ color: 0x8B4513 });
+const ringFloor = new THREE.Mesh(new THREE.BoxGeometry(6, 0.3, 6), new THREE.MeshLambertMaterial({ color: 0x2255aa }));
+ringFloor.position.y = 0.15;
+scene.add(ringFloor);
+
+// Ring ropes (simplified)
+const ropeMat = new THREE.MeshLambertMaterial({ color: 0xff0000 });
+[[-3, 0], [3, 0], [0, -3], [0, 3]].forEach(([x, z]) => {
+  const post = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 2, 8), ringMat);
+  post.position.set(x, 1.3, z);
+  scene.add(post);
+});
+
+// ══════════════════════════════════════════════════════════════════════════════
+// BANANA CHARACTER — Load original Bananzer JSON with custom parser
+// ══════════════════════════════════════════════════════════════════════════════
+const bananaGroup = new THREE.Group();
+scene.add(bananaGroup);
+
+// Original Bananzer model JSON (with legs)
+const bananzerJSON = {"metadata":{"version":4.7,"type":"Object","generator":"Object3D.toJSON"},"geometries":[{"uuid":"467e75cd-f98a-4573-b1f2-b06cc262fdd5","type":"CapsuleGeometry","radius":0.41,"height":1.99,"capSegments":3,"radialSegments":8},{"uuid":"99e39862-ff7e-40df-a92c-dc0725176175","type":"CapsuleGeometry","radius":0.08,"height":1,"capSegments":4,"radialSegments":8},{"uuid":"d7ffd553-cbd5-46c3-9eb8-1221000c685d","type":"CapsuleGeometry","radius":1,"height":1,"capSegments":4,"radialSegments":8},{"uuid":"e5490716-df4f-45c9-aaf6-88d9b1ef72e9","type":"SphereGeometry","radius":0.07,"widthSegments":32,"heightSegments":16},{"uuid":"1f69a77a-485e-40d7-be6a-cb1d7b076404","type":"SphereGeometry","radius":0.12,"widthSegments":32,"heightSegments":16},{"uuid":"63396b82-47b1-414e-8847-77675c29e3ab","type":"SphereGeometry","radius":0.13,"widthSegments":32,"heightSegments":16},{"uuid":"a170f72c-4e31-4a68-8395-b187ff824e8d","type":"CapsuleGeometry","radius":1,"height":1,"capSegments":4,"radialSegments":8},{"uuid":"ab06deb7-aa9a-4167-9e5d-d97ec5c57032","type":"CapsuleGeometry","radius":1,"height":1,"capSegments":4,"radialSegments":8},{"uuid":"f25acb19-b4a3-4437-990e-1e61ba77b607","type":"SphereGeometry","radius":0.2,"widthSegments":32,"heightSegments":16},{"uuid":"6f7aa8c8-7c0d-4fe5-ad5a-e663af7fc3a6","type":"LatheGeometry","points":[{"x":0.33,"y":0},{"x":0.01,"y":0.68}],"segments":12,"phiStart":0,"phiLength":6.283185307179586},{"uuid":"5d346031-120f-4bf4-b425-4e15f72a5094","type":"CapsuleGeometry","radius":1,"height":1,"capSegments":4,"radialSegments":8},{"uuid":"1f91d561-15a3-42bc-b734-5707cb52c0d4","type":"SphereGeometry","radius":1,"widthSegments":32,"heightSegments":16}],"materials":[{"uuid":"23e27867-c897-4a61-980f-7d2ee21917bf","type":"MeshStandardMaterial","color":12634922,"roughness":1,"metalness":0},{"uuid":"2c870e2a-f002-44d2-ba80-a2c5fc5ada73","type":"MeshStandardMaterial","color":16777215,"roughness":1,"metalness":0},{"uuid":"41c93bdd-08bf-4d34-a234-320e56f281c7","type":"MeshStandardMaterial","color":0,"roughness":1,"metalness":0},{"uuid":"d3c0b956-2c54-45ab-945e-9ee3d142f2a4","type":"MeshStandardMaterial","color":0,"roughness":1,"metalness":0},{"uuid":"e34cb4c8-2a01-406c-80a5-cc03d6d11285","type":"MeshStandardMaterial","color":16777215,"roughness":1,"metalness":0},{"uuid":"91f7ef1e-e389-459d-818b-a81e2f498e29","type":"MeshStandardMaterial","color":16777215,"roughness":1,"metalness":0},{"uuid":"af54a8bd-ac25-410a-a2c4-0748768fb102","type":"MeshStandardMaterial","color":0,"roughness":1,"metalness":0},{"uuid":"d370c559-41f1-40c6-8b81-4347c583e79f","type":"MeshStandardMaterial","color":12634922,"roughness":1,"metalness":0},{"uuid":"00b92b1a-236e-4208-af7f-abe503ba0de0","type":"MeshStandardMaterial","color":16711680,"roughness":1,"metalness":0},{"uuid":"da39f45d-6713-4c3e-be87-fdfffffee041","type":"MeshStandardMaterial","color":12634922,"roughness":1,"metalness":0,"side":2},{"uuid":"4fbbb307-f3d8-48ed-b6b2-c5a12a21d84a","type":"MeshStandardMaterial","color":0,"roughness":1,"metalness":0},{"uuid":"2a5c74b0-b597-49c0-ae9a-8d67a0373897","type":"MeshStandardMaterial","color":12634922,"roughness":1,"metalness":0}],"object":{"uuid":"3a51c9de-e07e-41c2-8d1a-202a507ada7e","type":"Group","name":"Bananzer","layers":1,"matrix":[1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1],"children":[{"uuid":"37dfe1ed-134f-4bbc-9aca-38600d7aad9c","type":"Mesh","name":"Body","layers":1,"matrix":[1,0,0,0,0,1,0,0,0,0,1,0,0,3.1925867122291134,0,1],"geometry":"467e75cd-f98a-4573-b1f2-b06cc262fdd5","material":"23e27867-c897-4a61-980f-7d2ee21917bf"},{"uuid":"fdaa1341-2004-476f-a51f-dd3c0b8b2b52","type":"Group","name":"Face","layers":1,"matrix":[1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1],"children":[{"uuid":"59eaef58-2d96-49fc-b075-5cf269b7b4bc","type":"Mesh","name":"Smile","layers":1,"matrix":[1.9251267247000214e-16,0.867,0,0,-0.36,7.993605777301127e-17,0,0,0,0,1,0,0.027,4.042,0.386,1],"geometry":"99e39862-ff7e-40df-a92c-dc0725176175","material":"2c870e2a-f002-44d2-ba80-a2c5fc5ada73"},{"uuid":"215a67c9-5704-43e5-874d-487844ce9b74","type":"Mesh","name":"Tooth1","layers":1,"matrix":[-2.886579864025407e-18,-0.013,0,0,-0.121,2.6867397195928787e-17,0,0,0,0,-0.027,0,0.03280258443938139,4.043488796835991,0.4557242223465835,1],"geometry":"d7ffd553-cbd5-46c3-9eb8-1221000c685d","material":"41c93bdd-08bf-4d34-a234-320e56f281c7"},{"uuid":"709c8291-d7e3-477a-85ef-750dce124cfb","type":"Mesh","name":"Tooth2","layers":1,"matrix":[0.013,-1.5920408388915591e-18,0,0,-5.0210518765041486e-18,-0.041,0,0,0,0,-0.027,0,-0.07793736355856715,4.048063318130415,0.4446110444096288,1],"geometry":"d7ffd553-cbd5-46c3-9eb8-1221000c685d","material":"41c93bdd-08bf-4d34-a234-320e56f281c7"},{"uuid":"d27a7a07-8fde-4e39-a7bf-ef45e3a57416","type":"Mesh","name":"Tooth3","layers":1,"matrix":[0.013,-1.5920408388915591e-18,0,0,-5.0210518765041486e-18,-0.041,0,0,0,0,-0.027,0,0.15941075659837659,4.044670338430133,0.4401457996661002,1],"geometry":"d7ffd553-cbd5-46c3-9eb8-1221000c685d","material":"41c93bdd-08bf-4d34-a234-320e56f281c7"},{"uuid":"668ba05b-f52c-4dbf-8780-67ffd4ec41d5","type":"Mesh","name":"Tooth4","layers":1,"matrix":[0.013,-1.5920408388915591e-18,0,0,-5.0210518765041486e-18,-0.041,0,0,0,0,-0.027,0,0.009758156072245755,4.048063318130415,0.44439349032396197,1],"geometry":"d7ffd553-cbd5-46c3-9eb8-1221000c685d","material":"41c93bdd-08bf-4d34-a234-320e56f281c7"},{"uuid":"aa0619e6-5e53-4534-b3d5-134968b80579","type":"Mesh","name":"Tooth5","layers":1,"matrix":[0.013,-1.5920408388915591e-18,0,0,-5.0210518765041486e-18,-0.041,0,0,0,0,-0.027,0,0.08455156561677529,4.048063318130415,0.44439349032396197,1],"geometry":"d7ffd553-cbd5-46c3-9eb8-1221000c685d","material":"41c93bdd-08bf-4d34-a234-320e56f281c7"},{"uuid":"ce87ef34-68e8-46f3-b2a0-82530f75cae7","type":"Mesh","name":"LeftBrow","layers":1,"matrix":[0.006955882180058968,0.010959209747519412,-0.0007151397115344073,0,0.09056834442274583,-0.05809193377201953,-0.009311402641394684,0,-0.002761335833670165,0,-0.026858425575854016,0,-0.113,4.447,0.288,1],"geometry":"d7ffd553-cbd5-46c3-9eb8-1221000c685d","material":"41c93bdd-08bf-4d34-a234-320e56f281c7"},{"uuid":"023db7c5-d7fb-411b-a895-679a0629dff2","type":"Mesh","name":"RightBrow","layers":1,"matrix":[0.004308223735567277,-0.012257365932599018,-0.0004429318668323321,0,-0.10129647712514438,-0.0359800585235754,0.010414370392644184,0,-0.0027613358336701643,0,-0.026858425575854016,0,0.16403887366811215,4.447,0.2436855368404668,1],"geometry":"d7ffd553-cbd5-46c3-9eb8-1221000c685d","material":"41c93bdd-08bf-4d34-a234-320e56f281c7"},{"uuid":"040d3b41-6b10-4234-ace7-e379d669d26d","type":"Mesh","name":"RightEyeHole","layers":1,"matrix":[1,0,0,0,0,1,0,0,0,0,1,0,0.174,4.319,0.372,1],"geometry":"e5490716-df4f-45c9-aaf6-88d9b1ef72e9","material":"d3c0b956-2c54-45ab-945e-9ee3d142f2a4"},{"uuid":"badb30ed-7853-4cc2-8669-4fe9f63665dd","type":"Mesh","name":"LeftEyeHole","layers":1,"matrix":[1,0,0,0,0,1,0,0,0,0,1,0,-0.12,4.333,0.412,1],"geometry":"e5490716-df4f-45c9-aaf6-88d9b1ef72e9","material":"d3c0b956-2c54-45ab-945e-9ee3d142f2a4"},{"uuid":"ead2c4f5-5cd9-46be-9109-4941db742499","type":"Mesh","name":"LeftEye","layers":1,"matrix":[0.979954635013532,0.1365447948326917,0.1450669925227423,0,-0.12815450582694085,0.9895735221759469,-0.06573177956318672,0,-0.1525297870966449,0.04582317331208003,0.98723599044801,0,-0.134,4.307,0.347,1],"geometry":"1f69a77a-485e-40d7-be6a-cb1d7b076404","material":"e34cb4c8-2a01-406c-80a5-cc03d6d11285"},{"uuid":"f2a3fdff-46ff-4d33-a74f-a947c3b0f371","type":"Mesh","name":"RightEye","layers":1,"matrix":[1,0,0,0,0,1,0,0,0,0,1,0,0.173,4.294,0.293,1],"geometry":"63396b82-47b1-414e-8847-77675c29e3ab","material":"91f7ef1e-e389-459d-818b-a81e2f498e29"},{"uuid":"a34aa66c-2e98-4681-9671-49485e7ccf1d","type":"Mesh","name":"Nose","layers":1,"matrix":[0.03,0,0,0,0,0.018,0,0,0,0,0.03,0,0.024515350602189456,4.260297301343078,0.39652104528896076,1],"geometry":"a170f72c-4e31-4a68-8395-b187ff824e8d","material":"af54a8bd-ac25-410a-a2c4-0748768fb102"}]},{"uuid":"8b680673-0388-4e22-90a8-37c9788401eb","type":"Group","name":"Hands","layers":1,"matrix":[1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1],"children":[{"uuid":"b1470f40-ca29-49ba-ac05-8aed9b39e368","type":"Mesh","name":"RightBicep","layers":1,"matrix":[0.04614751397480035,-0.1308865741573987,0.00775317091810757,0,-0.21035157750964728,-0.07390567074098932,0.0043778615244616445,0,3.5735303605122224e-19,0.006090611136503055,0.10281976685435493,0,-0.5443734524323336,3.7349080735911215,0.04145168779529243,1],"geometry":"ab06deb7-aa9a-4167-9e5d-d97ec5c57032","material":"d370c559-41f1-40c6-8b81-4347c583e79f"},{"uuid":"754de20a-35f4-4766-89f1-c97455d3b030","type":"Mesh","name":"LeftBicep","layers":1,"matrix":[-0.0461475139748003,-0.1308865741573987,0.007753170918107566,0,0.21035157750964728,-0.07390567074098932,0.00437786152446167,0,1.2507356261792779e-17,-0.0060906111365030555,-0.10281976685435495,0,0.5226110049861008,3.7349080735911215,0.04145168779529243,1],"geometry":"ab06deb7-aa9a-4167-9e5d-d97ec5c57032","material":"d370c559-41f1-40c6-8b81-4347c583e79f"},{"uuid":"ef591008-415c-45a8-8090-5702ad4a7a06","type":"Mesh","name":"RightForearm","layers":1,"matrix":[-0.005667022073611933,-0.13860688800344986,-0.008775845190994266,0,0.0700979779817984,-0.016230014303116203,0.21107311557511044,0,0.09768873883779476,-0.0019305629970784433,-0.03259115264600859,0,-0.7013037122859083,3.6512309913251744,0.278086153592963,1],"geometry":"ab06deb7-aa9a-4167-9e5d-d97ec5c57032","material":"d370c559-41f1-40c6-8b81-4347c583e79f"},{"uuid":"081c0136-6f45-42e5-9a89-fc1ebc572017","type":"Mesh","name":"LeftForearm","layers":1,"matrix":[0.008743995736612503,-0.12231069648436808,-0.06545713149891991,0,-0.10815846712016476,-0.09797202292132973,0.16861858947019656,0,0.08984072473808688,-0.018626005938936586,0.04680508606228602,0,0.6511921553610169,3.541892812092574,0.278086153592963,1],"geometry":"ab06deb7-aa9a-4167-9e5d-d97ec5c57032","material":"d370c559-41f1-40c6-8b81-4347c583e79f"},{"uuid":"51bd8491-438d-400a-99c6-5e2a8589c6d2","type":"Mesh","name":"RightGlove","layers":1,"matrix":[1,0,0,0,0,1,0,0,0,0,1,0,-0.5522443160704966,3.637102444803655,0.6635528863638349,1],"geometry":"f25acb19-b4a3-4437-990e-1e61ba77b607","material":"00b92b1a-236e-4208-af7f-abe503ba0de0"},{"uuid":"73decae5-8d06-4fa0-befe-fcc5655c6a2a","type":"Mesh","name":"LeftGlove","layers":1,"matrix":[1,0,0,0,0,1,0,0,0,0,1,0,0.4530911554203776,3.443158383577359,0.573485554816832,1],"geometry":"f25acb19-b4a3-4437-990e-1e61ba77b607","material":"00b92b1a-236e-4208-af7f-abe503ba0de0"}]},{"uuid":"d00c315a-5c79-43bd-aa1b-0d17639a32e7","type":"Mesh","name":"Hair","layers":1,"matrix":[1.0889504903620888,-0.09666978744144741,0.2479572175521252,0,0.025197176832198628,1.4613802648040217,0.45908258943355096,0,-0.19941771898725097,-0.2420386890884832,0.7814178436267311,0,-0.012,4.228,-0.05201129699162471,1],"geometry":"6f7aa8c8-7c0d-4fe5-ad5a-e663af7fc3a6","material":"da39f45d-6713-4c3e-be87-fdfffffee041"},{"uuid":"db2e2613-bff3-4ba8-9e36-8ba6c84bd5d0","type":"Mesh","name":"TopDot","layers":1,"matrix":[0.055,0,0,0,0,0.043,0,0,0,0,0.055,0,0.010326745064589249,5.199,0.2540910949874727,1],"geometry":"5d346031-120f-4bf4-b425-4e15f72a5094","material":"4fbbb307-f3d8-48ed-b6b2-c5a12a21d84a"},{"uuid":"e4db3531-0ea9-4734-8c81-658ece3d1b92","type":"Mesh","name":"RightLeg","layers":1,"matrix":[0.128,0,0,0,0,0.394,0,0,0,0,0.164,0,-0.29385285714881726,1.709147035509468,0,1],"geometry":"1f91d561-15a3-42bc-b734-5707cb52c0d4","material":"2a5c74b0-b597-49c0-ae9a-8d67a0373897"},{"uuid":"945037bf-c382-441b-b3fe-9365ec2e01fd","type":"Mesh","name":"LeftLeg","layers":1,"matrix":[0.128,0,0,0,0,0.394,0,0,0,0,0.164,0,0.262390028284183,1.709147035509468,0,1],"geometry":"1f91d561-15a3-42bc-b734-5707cb52c0d4","material":"2a5c74b0-b597-49c0-ae9a-8d67a0373897"},{"uuid":"8727a5b7-f447-4a4f-807e-5cb67cdad6a5","type":"Mesh","name":"RightBoot","layers":1,"matrix":[-0.127,0,0,0,0,-0.078,0,0,0,0,0.212,0,-0.31049478978664485,1.3273336290673956,0.06764631584752898,1],"geometry":"5d346031-120f-4bf4-b425-4e15f72a5094","material":"4fbbb307-f3d8-48ed-b6b2-c5a12a21d84a"},{"uuid":"0416fee5-d181-4daa-9e5c-72f4bff9fd69","type":"Mesh","name":"LeftBoot","layers":1,"matrix":[-0.127,0,0,0,0,-0.078,0,0,0,0,0.212,0,0.2484271920922127,1.3273336290673956,0.06764631584752898,1],"geometry":"5d346031-120f-4bf4-b425-4e15f72a5094","material":"4fbbb307-f3d8-48ed-b6b2-c5a12a21d84a"}]}};
+
+// Custom parser for JSON model
+function parseModel(json) {
+  // Parse geometries
+  const geometries = {};
+  json.geometries.forEach(g => {
+    let geom;
+    if (g.type === 'CapsuleGeometry') {
+      // r152 uses (radius, length, capSegments, radialSegments)
+      geom = new THREE.CapsuleGeometry(g.radius, g.length || g.height || 1, g.capSegments || 4, g.radialSegments || 8);
+    } else if (g.type === 'SphereGeometry') {
+      geom = new THREE.SphereGeometry(g.radius, g.widthSegments || 32, g.heightSegments || 16);
+    } else if (g.type === 'LatheGeometry') {
+      // Convert points to Vector2
+      const points = g.points.map(p => new THREE.Vector2(p.x, p.y));
+      geom = new THREE.LatheGeometry(points, g.segments || 12, g.phiStart || 0, g.phiLength || Math.PI * 2);
+    }
+    if (geom) geometries[g.uuid] = geom;
+  });
+  
+  // Parse materials
+  const materials = {};
+  json.materials.forEach(m => {
+    const mat = new THREE.MeshStandardMaterial({
+      color: m.color,
+      roughness: m.roughness !== undefined ? m.roughness : 1,
+      metalness: m.metalness !== undefined ? m.metalness : 0,
+      side: m.side === 2 ? THREE.DoubleSide : THREE.FrontSide
+    });
+    materials[m.uuid] = mat;
+  });
+  
+  // Parse object tree
+  function parseObject(obj) {
+    let result;
+    
+    if (obj.type === 'Group') {
+      result = new THREE.Group();
+    } else if (obj.type === 'Mesh') {
+      const geom = geometries[obj.geometry];
+      const mat = materials[obj.material];
+      if (geom && mat) {
+        result = new THREE.Mesh(geom, mat);
+      } else {
+        result = new THREE.Group();
+      }
+    } else {
+      result = new THREE.Object3D();
+    }
+    
+    result.name = obj.name || '';
+    
+    // Apply matrix transform
+    if (obj.matrix) {
+      const m = new THREE.Matrix4();
+      m.fromArray(obj.matrix);
+      result.applyMatrix4(m);
+    }
+    
+    // Parse children
+    if (obj.children) {
+      obj.children.forEach(child => {
+        result.add(parseObject(child));
+      });
+    }
+    
+    return result;
+  }
+  
+  return parseObject(json.object);
+}
+
+// Load model
+const bananzer = parseModel(bananzerJSON);
+
+// Scale and position for game (model now has legs)
+bananzer.scale.set(0.5, 0.5, 0.5);
+bananzer.position.set(0, 0.35, 0);
+bananaGroup.add(bananzer);
+
+// References for animation
+const leftArm = bananaGroup;
+const rightArm = bananaGroup;
+
+// Hit target positions
+const HIT_TARGETS = {
+  head: new THREE.Vector3(0, 1.7, 0.15),
+  body: new THREE.Vector3(0, 1.1, 0.2),
+  sideLeft: new THREE.Vector3(-0.3, 1.2, 0.15),
+  sideRight: new THREE.Vector3(0.3, 1.2, 0.15)
+};
+
+// Color for particles (banana yellow)
+const particleMat = new THREE.MeshBasicMaterial({ color: 0xc0b91a });
+
+// ══════════════════════════════════════════════════════════════════════════════
+// PARTICLE SYSTEM
+// ══════════════════════════════════════════════════════════════════════════════
+const particles = [];
+
+function spawnParticles(position, count = 8) {
+  for (let i = 0; i < count; i++) {
+    const size = 0.015 + Math.random() * 0.025;
+    const particle = new THREE.Mesh(
+      new THREE.SphereGeometry(size, 6, 6),
+      particleMat
+    );
+    
+    particle.position.copy(position);
+    particle.userData = {
+      velocity: new THREE.Vector3(
+        (Math.random() - 0.5) * 0.12,
+        Math.random() * 0.08 + 0.04,
+        (Math.random() - 0.5) * 0.08 + 0.08
+      ),
+      life: 1.0
+    };
+    
+    scene.add(particle);
+    particles.push(particle);
+  }
+}
+
+function updateParticles() {
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+    const data = p.userData;
+    
+    p.position.add(data.velocity);
+    data.velocity.y -= 0.006; // gravity
+    
+    data.life -= 0.035;
+    p.scale.setScalar(Math.max(0, data.life));
+    
+    if (data.life <= 0) {
+      scene.remove(p);
+      particles.splice(i, 1);
+    }
+  }
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// SOUND EFFECTS
+// ══════════════════════════════════════════════════════════════════════════════
+const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+function playHitSound(type) {
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+  const osc2 = audioCtx.createOscillator();
+  const gain2 = audioCtx.createGain();
+  
+  osc.connect(gain);
+  gain.connect(audioCtx.destination);
+  osc2.connect(gain2);
+  gain2.connect(audioCtx.destination);
+  
+  if (type === 'strong') {
+    // Heavy thud + low rumble
+    osc.frequency.value = 80;
+    osc.type = 'sawtooth';
+    gain.gain.setValueAtTime(0.5, audioCtx.currentTime);
+    gain.gain.setTargetAtTime(0.01, audioCtx.currentTime + 0.08, 0.04);
+    
+    osc2.frequency.value = 150;
+    osc2.type = 'square';
+    gain2.gain.setValueAtTime(0.25, audioCtx.currentTime);
+    gain2.gain.setTargetAtTime(0.01, audioCtx.currentTime + 0.05, 0.03);
+    
+    osc2.start();
+    osc2.stop(audioCtx.currentTime + 0.12);
+  } else if (type === 'hook') {
+    // Sharp whack
+    osc.frequency.value = 200;
+    osc.type = 'square';
+    gain.gain.setValueAtTime(0.35, audioCtx.currentTime);
+    gain.gain.setTargetAtTime(0.01, audioCtx.currentTime + 0.04, 0.025);
+  } else {
+    // Normal punch - quick pop
+    osc.frequency.value = 300;
+    osc.type = 'triangle';
+    gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
+    gain.gain.setTargetAtTime(0.01, audioCtx.currentTime + 0.03, 0.02);
+  }
+  
+  osc.start();
+  osc.stop(audioCtx.currentTime + 0.15);
+}
+
+function playWhooshSound() {
+  const bufferSize = audioCtx.sampleRate * 0.08;
+  const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+  const data = buffer.getChannelData(0);
+  
+  for (let i = 0; i < bufferSize; i++) {
+    const t = i / bufferSize;
+    data[i] = (Math.random() - 0.5) * (1 - t) * 0.2 * Math.sin(t * 20);
+  }
+  
+  const source = audioCtx.createBufferSource();
+  const filter = audioCtx.createBiquadFilter();
+  filter.type = 'bandpass';
+  filter.frequency.value = 800;
+  
+  source.buffer = buffer;
+  source.connect(filter);
+  filter.connect(audioCtx.destination);
+  source.start();
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// PLAYER GLOVES
+// ══════════════════════════════════════════════════════════════════════════════
+const playerGloveMat = new THREE.MeshLambertMaterial({ color: 0x0066ff });
+
+const leftPlayerGlove = new THREE.Group();
+const rightPlayerGlove = new THREE.Group();
+
+// Create glove shape (isRight for mirroring)
+function createGlove(isRight) {
+  const g = new THREE.Group();
+  const main = new THREE.Mesh(new THREE.SphereGeometry(0.2, 12, 12), playerGloveMat);
+  main.scale.set(1, 0.85, 0.9);
+  g.add(main);
+  
+  // Thumb - mirror for right glove
+  const thumb = new THREE.Mesh(new THREE.SphereGeometry(0.07, 8, 8), playerGloveMat);
+  thumb.position.set(isRight ? -0.15 : 0.15, 0, 0.1);
+  g.add(thumb);
+  
+  // Wrist
+  const wrist = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.12, 0.15, 8), playerGloveMat);
+  wrist.position.y = -0.18;
+  g.add(wrist);
+  
+  return g;
+}
+
+leftPlayerGlove.add(createGlove(false));
+rightPlayerGlove.add(createGlove(true));
+
+leftPlayerGlove.position.set(-0.5, 1, 2);
+rightPlayerGlove.position.set(0.5, 1, 2);
+
+scene.add(leftPlayerGlove);
+scene.add(rightPlayerGlove);
+
+// Glove animation state
+const gloveState = {
+  left: { punching: false, target: new THREE.Vector3(-0.5, 1, 2), returnPos: new THREE.Vector3(-0.5, 1, 2) },
+  right: { punching: false, target: new THREE.Vector3(0.5, 1, 2), returnPos: new THREE.Vector3(0.5, 1, 2) }
+};
+
+// ══════════════════════════════════════════════════════════════════════════════
+// CRITICAL HIT COMBO SYSTEM
+// ══════════════════════════════════════════════════════════════════════════════
+const CRITICAL_WINDOW = 7000; // 7 seconds
+const CRITICAL_BONUS = 50;
+const hitHistory = []; // { type: 'jab'|'hook', time: timestamp }
+
+function checkCriticalCombo() {
+  const now = performance.now();
+  // Remove old hits
+  while (hitHistory.length > 0 && now - hitHistory[0].time > CRITICAL_WINDOW) {
+    hitHistory.shift();
+  }
+  
+  // Count jabs and hooks in window
+  let jabs = 0, hooks = 0;
+  hitHistory.forEach(h => {
+    if (h.type === 'jab') jabs++;
+    else if (h.type === 'hook') hooks++;
+  });
+  
+  // 2 jabs + 1 hook = critical
+  if (jabs >= 2 && hooks >= 1) {
+    // Clear history to prevent repeated criticals
+    hitHistory.length = 0;
+    return true;
+  }
+  return false;
+}
+
+function showCriticalHit() {
+  const el = document.getElementById('critical-hit');
+  el.textContent = t('criticalHit');
+  el.classList.remove('show');
+  void el.offsetWidth; // Reflow
+  el.classList.add('show');
+  
+  // Apply critical damage
+  bananaHP -= CRITICAL_BONUS;
+  updateHP();
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// GAME STATE
+// ══════════════════════════════════════════════════════════════════════════════
+let bananaHP = 1000;
+const MAX_HP = 1000;
+let gameOver = false;
+
+// Combo
+let comboCount = 0;
+let lastComboTime = 0;
+const COMBO_TIMEOUT = 1500;
+
+// Damage values
+const DAMAGE = {
+  'jab_right': 20,
+  'jab_left': 20,
+  'hook_right': 35,
+  'hook_left': 35
+};
+
+function updateHP() {
+  const pct = Math.max(0, bananaHP / MAX_HP * 100);
+  document.getElementById('hp-bar').style.width = pct + '%';
+  document.getElementById('hp-text').textContent = `${Math.max(0, bananaHP)} / ${MAX_HP}`;
+  
+  if (bananaHP <= 0 && !gameOver) {
+    gameOver = true;
+    document.getElementById('game-over-title').textContent = t('victory');
+    document.getElementById('game-over').classList.add('show');
+  }
+}
+
+function dealDamage(gesture) {
+  if (gameOver) return;
+  
+  const dmg = DAMAGE[gesture] || 0;
+  if (dmg === 0) return;
+  
+  bananaHP -= dmg;
+  updateHP();
+  
+  // Combo
+  const now = performance.now();
+  if (now - lastComboTime > COMBO_TIMEOUT) {
+    comboCount = 0;
+  }
+  comboCount++;
+  lastComboTime = now;
+  updateCombo();
+  
+  // Visual feedback
+  showHitEffect(gesture, dmg);
+  punchAnimation(gesture);
+  bananaTakeHit();
+}
+
+function updateCombo() {
+  const el = document.getElementById('combo-count');
+  el.textContent = comboCount;
+  
+  if (comboCount >= 10) {
+    el.style.color = '#ff4444';
+  } else if (comboCount >= 5) {
+    el.style.color = '#ffcc00';
+  } else {
+    el.style.color = '#ffffff';
+  }
+}
+
+function showHitEffect(gesture, dmg) {
+  const ind = document.getElementById('hit-indicator');
+  const gestureNames = {
+    'strong_right': '👊➡️',
+    'strong_left': '⬅️👊',
+    'normal_right': '✊➡️',
+    'normal_left': '⬅️✊',
+    'hook_right': '🪝➡️',
+    'hook_left': '⬅️🪝'
+  };
+  
+  ind.innerHTML = `${gestureNames[gesture] || '👊'}<br><span style="font-size:32px;color:#ff4444">-${dmg}</span>`;
+  ind.style.color = '#ffcc00';
+  ind.style.transform = 'translate(-50%,-50%) scale(1)';
+  ind.style.opacity = '1';
+  
+  setTimeout(() => {
+    ind.style.transform = 'translate(-50%,-50%) scale(0.5)';
+    ind.style.opacity = '0';
+  }, 400);
+  
+  // Damage flash
+  const flash = document.getElementById('damage-flash');
+  flash.style.background = 'rgba(255,100,0,0.3)';
+  setTimeout(() => flash.style.background = 'rgba(255,0,0,0)', 100);
+}
+
+function punchAnimation(gesture) {
+  const isLeft = gesture.includes('left');
+  const glove = isLeft ? leftPlayerGlove : rightPlayerGlove;
+  const state = isLeft ? gloveState.left : gloveState.right;
+  
+  if (state.punching) return;
+  state.punching = true;
+  
+  // Determine target based on gesture type
+  // Model eye positions (scaled 0.5): left eye ~-0.07, right eye ~0.09
+  let punchTarget;
+  let hitType;
+  
+  if (gesture.includes('jab')) {
+    // Jab right → right eye of opponent (positive X)
+    // Jab left → left eye of opponent (negative X)
+    punchTarget = new THREE.Vector3(
+      isLeft ? -0.07 : 0.09,  // eye positions
+      1.75 + bananaGroup.position.y,  // eye height
+      0.2
+    );
+    hitType = 'jab';
+  } else if (gesture.includes('hook')) {
+    // Hook right → right side (positive X) of opponent body
+    // Hook left → left side (negative X) of opponent body
+    punchTarget = new THREE.Vector3(
+      isLeft ? -0.25 : 0.25,  // same side as punch hand
+      1.3 + bananaGroup.position.y,  // body center height
+      0.25
+    );
+    hitType = 'hook';
+  } else {
+    // Default
+    punchTarget = new THREE.Vector3(
+      isLeft ? -0.05 : 0.05,
+      1.5 + bananaGroup.position.y,
+      0.3
+    );
+    hitType = 'jab';
+  }
+  
+  // Track hit for critical combo
+  hitHistory.push({ type: hitType, time: performance.now() });
+  
+  const startPos = glove.position.clone();
+  const startTime = performance.now();
+  const forwardDuration = 100;  // Fast punch
+  const returnDuration = 150;   // Slower return
+  
+  // Play whoosh sound at start
+  playWhooshSound();
+  
+  function animatePunch() {
+    const elapsed = performance.now() - startTime;
+    const totalDuration = forwardDuration + returnDuration;
+    
+    if (elapsed < forwardDuration) {
+      // Forward - fast
+      const t = elapsed / forwardDuration;
+      const easeOut = 1 - Math.pow(1 - t, 3); // ease out
+      glove.position.lerpVectors(startPos, punchTarget, easeOut);
+    } else if (elapsed < totalDuration) {
+      // Hit moment - spawn particles and play sound
+      if (elapsed - forwardDuration < 20) {
+        spawnParticles(punchTarget.clone().add(new THREE.Vector3(0, 0, 0.1)), 10);
+        playHitSound(hitType);
+        
+        // Check for critical combo
+        if (checkCriticalCombo()) {
+          showCriticalHit();
+        }
+      }
+      
+      // Return - slower
+      const t = (elapsed - forwardDuration) / returnDuration;
+      const easeIn = t * t; // ease in
+      glove.position.lerpVectors(punchTarget, state.returnPos, easeIn);
+    }
+    
+    if (elapsed < totalDuration) {
+      requestAnimationFrame(animatePunch);
+    } else {
+      glove.position.copy(state.returnPos);
+      state.punching = false;
+    }
+  }
+  
+  animatePunch();
+}
+
+function bananaTakeHit() {
+  // Shake banana
+  const startTime = performance.now();
+  const duration = 200;
+  const originalPos = bananaGroup.position.clone();
+  
+  function shake() {
+    const elapsed = performance.now() - startTime;
+    const progress = elapsed / duration;
+    
+    if (progress < 1) {
+      bananaGroup.position.x = originalPos.x + Math.sin(progress * Math.PI * 4) * 0.1 * (1 - progress);
+      bananaGroup.rotation.z = Math.sin(progress * Math.PI * 3) * 0.1 * (1 - progress);
+      requestAnimationFrame(shake);
+    } else {
+      bananaGroup.position.copy(originalPos);
+      bananaGroup.rotation.z = 0;
+    }
+  }
+  shake();
+}
+
+function restartGame() {
+  bananaHP = MAX_HP;
+  gameOver = false;
+  comboCount = 0;
+  updateHP();
+  updateCombo();
+  document.getElementById('game-over').classList.remove('show');
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// TENSORFLOW RECOGNITION
+// ══════════════════════════════════════════════════════════════════════════════
+let tfModel = null;
+let modelLoaded = false;
+
+// No noise class - use confidence threshold instead
+const GESTURE_TYPES = ['jab_right', 'jab_left', 'hook_right', 'hook_left'];
+const WINDOW_SIZE = 50;
+const BUFFER_SIZE = 50;
+const buffer = { gx: [], gy: [], gz: [], ax: [], ay: [], az: [] };
+
+// Confidence and energy thresholds
+const CONFIDENCE_THRESHOLD = 0.70;
+const MARGIN_THRESHOLD = 0.15;
+const MIN_PEAK_ENERGY = 400;
+let peakEnergy = 0;
+
+// Feature count: 50 timesteps * 6 axes + 12 statistical features = 312
+const NUM_FEATURES = WINDOW_SIZE * 6 + 12;
+
+function createTFModel() {
+  const numClasses = GESTURE_TYPES.length;
+  
+  const model = tf.sequential({
+    layers: [
+      tf.layers.dense({ inputShape: [NUM_FEATURES], units: 128, activation: 'relu', kernelRegularizer: tf.regularizers.l2({l2: 0.001}) }),
+      tf.layers.batchNormalization(),
+      tf.layers.dropout({ rate: 0.4 }),
+      tf.layers.dense({ units: 64, activation: 'relu', kernelRegularizer: tf.regularizers.l2({l2: 0.001}) }),
+      tf.layers.batchNormalization(),
+      tf.layers.dropout({ rate: 0.3 }),
+      tf.layers.dense({ units: 32, activation: 'relu' }),
+      tf.layers.dropout({ rate: 0.2 }),
+      tf.layers.dense({ units: numClasses, activation: 'softmax' })
+    ]
+  });
+  
+  model.compile({
+    optimizer: tf.train.adam(0.0005),
+    loss: 'categoricalCrossentropy',
+    metrics: ['accuracy']
+  });
+  
+  return model;
+}
+
+function resample(arr, targetLen) {
+  if (!arr || arr.length === 0) return null;
+  if (arr.length === targetLen) return [...arr];
+  
+  const result = [];
+  const step = arr.length / targetLen;
+  for (let i = 0; i < targetLen; i++) {
+    const idx = Math.min(Math.floor(i * step), arr.length - 1);
+    result.push(arr[idx]);
+  }
+  return result;
+}
+
+function extractFeatures(sample) {
+  const gx = resample(sample.gx, WINDOW_SIZE);
+  const gy = resample(sample.gy, WINDOW_SIZE);
+  const gz = resample(sample.gz, WINDOW_SIZE);
+  const ax = resample(sample.ax || new Array(sample.gx.length).fill(0), WINDOW_SIZE);
+  const ay = resample(sample.ay || new Array(sample.gx.length).fill(0), WINDOW_SIZE);
+  const az = resample(sample.az || new Array(sample.gx.length).fill(0), WINDOW_SIZE);
+  
+  if (!gx || !gy || !gz) return null;
+  
+  const normalize = arr => {
+    const max = Math.max(...arr.map(Math.abs)) || 1;
+    return arr.map(v => v / max);
+  };
+  
+  const nGx = normalize(gx);
+  const nGy = normalize(gy);
+  const nGz = normalize(gz);
+  const nAx = normalize(ax);
+  const nAy = normalize(ay);
+  const nAz = normalize(az);
+  
+  // Flatten: [gx0,gy0,gz0,ax0,ay0,az0, ...]
+  const features = [];
+  for (let i = 0; i < WINDOW_SIZE; i++) {
+    features.push(nGx[i], nGy[i], nGz[i], nAx[i], nAy[i], nAz[i]);
+  }
+  
+  // Statistical features
+  const stats = (arr) => {
+    const sum = arr.reduce((a,b) => a+b, 0);
+    const mean = sum / arr.length;
+    const variance = arr.reduce((a,b) => a + (b-mean)**2, 0) / arr.length;
+    return { mean, std: Math.sqrt(variance), max: Math.max(...arr) };
+  };
+  
+  const gyroMag = gx.map((v, i) => Math.sqrt(v*v + gy[i]*gy[i] + gz[i]*gz[i]));
+  const gStats = stats(gyroMag);
+  
+  const accelMag = ax.map((v, i) => Math.sqrt(v*v + ay[i]*ay[i] + az[i]*az[i]));
+  const aStats = stats(accelMag);
+  
+  features.push(
+    gStats.mean / 500, gStats.std / 500, gStats.max / 1000,
+    aStats.mean / 4, aStats.std / 4, aStats.max / 8, // accel in g
+    nGx.reduce((a,b) => a+b, 0) / WINDOW_SIZE,
+    nGy.reduce((a,b) => a+b, 0) / WINDOW_SIZE,
+    nGz.reduce((a,b) => a+b, 0) / WINDOW_SIZE,
+    nAx.reduce((a,b) => a+b, 0) / WINDOW_SIZE,
+    nAy.reduce((a,b) => a+b, 0) / WINDOW_SIZE,
+    nAz.reduce((a,b) => a+b, 0) / WINDOW_SIZE
+  );
+  
+  return features;
+}
+
+async function recognizeTF() {
+  if (!tfModel || !modelLoaded) return null;
+  
+  const features = extractFeatures({
+    gx: [...buffer.gx],
+    gy: [...buffer.gy],
+    gz: [...buffer.gz],
+    ax: [...buffer.ax],
+    ay: [...buffer.ay],
+    az: [...buffer.az]
+  });
+  
+  if (!features) return null;
+  
+  const input = tf.tensor2d([features]);
+  const prediction = tfModel.predict(input);
+  const probs = await prediction.data();
+  input.dispose();
+  prediction.dispose();
+  
+  // Find best and second best
+  let maxIdx = 0, maxProb = 0, secondProb = 0;
+  probs.forEach((p, i) => {
+    if (p > maxProb) {
+      secondProb = maxProb;
+      maxProb = p;
+      maxIdx = i;
+    } else if (p > secondProb) {
+      secondProb = p;
+    }
+  });
+  
+  const margin = maxProb - secondProb;
+  
+  return { 
+    gesture: GESTURE_TYPES[maxIdx], 
+    confidence: maxProb,
+    margin: margin,
+    isValid: maxProb >= CONFIDENCE_THRESHOLD && margin >= MARGIN_THRESHOLD
+  };
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// MODEL LOADING
+// ══════════════════════════════════════════════════════════════════════════════
+async function loadModel(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  
+  const reader = new FileReader();
+  reader.onload = async (e) => {
+    try {
+      const data = JSON.parse(e.target.result);
+      
+      if (data.type !== 'gesture_model_tf') {
+        alert('Invalid model file! Use gesture_model_tf.json from TF trainer');
+        return;
+      }
+      
+      tfModel = createTFModel();
+      
+      // Load weights
+      let layerIdx = 0;
+      for (const layer of tfModel.layers) {
+        if (data.weights[layerIdx] && data.weights[layerIdx].length > 0) {
+          const tensors = data.weights[layerIdx].map(w => 
+            tf.tensor(w.data, w.shape)
+          );
+          layer.setWeights(tensors);
+          tensors.forEach(t => t.dispose());
+        }
+        layerIdx++;
+      }
+      
+      modelLoaded = true;
+      document.getElementById('dataset-btn').classList.add('loaded');
+      document.getElementById('dataset-btn').textContent = t('modelLoaded');
+      
+    } catch(err) {
+      console.error(err);
+      alert('Error loading model: ' + err.message);
+    }
+  };
+  reader.readAsText(file);
+}
+
+const BLE_SERVICE = '6e400001-b5a3-f393-e0a9-e50e24dcca9e';
+const BLE_CHAR_TX = '6e400003-b5a3-f393-e0a9-e50e24dcca9e';
+
+const CALIB = { 
+  samples: [], collecting: false, done: false, 
+  gxOff: 0, gyOff: 0, gzOff: 0,
+  axOff: 0, ayOff: 0, azOff: 0
+};
+
+let isDetecting = false;
+let motionStart = 0;
+let lastRecognitionTime = 0;
+const MOTION_THRESHOLD = 300;
+const MOTION_END = 100;
+const RECOGNITION_COOLDOWN = 400;
+
+async function connectBLE() {
+  if (!navigator.bluetooth) { alert('Web Bluetooth not supported'); return; }
+  
+  const btn = document.getElementById('ble-btn');
+  btn.textContent = t('scanning');
+  
+  try {
+    const device = await navigator.bluetooth.requestDevice({
+      filters: [{ name: 'FruitNinja' }],
+      optionalServices: [BLE_SERVICE]
+    });
+    
+    const server = await device.gatt.connect();
+    const service = await server.getPrimaryService(BLE_SERVICE);
+    const char = await service.getCharacteristic(BLE_CHAR_TX);
+    
+    await char.startNotifications();
+    char.addEventListener('characteristicvaluechanged', onIMU);
+    
+    btn.classList.add('connected');
+    btn.textContent = t('connected');
+    CALIB.collecting = true;
+    
+  } catch(e) {
+    console.error(e);
+    btn.textContent = t('connectController');
+  }
+}
+
+function onIMU(event) {
+  let d;
+  try { d = JSON.parse(new TextDecoder().decode(event.target.value)); } catch(e) { return; }
+  
+  const gx = d.gx || 0, gy = d.gy || 0, gz = d.gz || 0;
+  const ax = d.ax || 0, ay = d.ay || 0, az = d.az || 0;
+  
+  // Calibration
+  if (CALIB.collecting) {
+    CALIB.samples.push({ gx, gy, gz, ax, ay, az });
+    if (d.cal || CALIB.samples.length >= 100) {
+      let sGx=0, sGy=0, sGz=0, sAx=0, sAy=0, sAz=0;
+      CALIB.samples.forEach(s => { 
+        sGx+=s.gx; sGy+=s.gy; sGz+=s.gz;
+        sAx+=s.ax; sAy+=s.ay; sAz+=s.az;
+      });
+      const n = CALIB.samples.length;
+      CALIB.gxOff = sGx/n; CALIB.gyOff = sGy/n; CALIB.gzOff = sGz/n;
+      CALIB.axOff = sAx/n; CALIB.ayOff = sAy/n; CALIB.azOff = sAz/n - 1; // gravity in g
+      CALIB.collecting = false;
+      CALIB.done = true;
+    }
+    return;
+  }
+  
+  if (!CALIB.done) return;
+  
+  const cgx = gx - CALIB.gxOff;
+  const cgy = gy - CALIB.gyOff;
+  const cgz = gz - CALIB.gzOff;
+  const cax = ax - CALIB.axOff;
+  const cay = ay - CALIB.ayOff;
+  const caz = az - CALIB.azOff;
+  const gyroMag = Math.sqrt(cgx*cgx + cgy*cgy + cgz*cgz);
+  
+  // Buffer (gyro + accel)
+  buffer.gx.push(cgx); buffer.gy.push(cgy); buffer.gz.push(cgz);
+  buffer.ax.push(cax); buffer.ay.push(cay); buffer.az.push(caz);
+  while (buffer.gx.length > BUFFER_SIZE) {
+    buffer.gx.shift(); buffer.gy.shift(); buffer.gz.shift();
+    buffer.ax.shift(); buffer.ay.shift(); buffer.az.shift();
+  }
+  
+  // Motion detection
+  const now = performance.now();
+  
+  if (!isDetecting) {
+    if (gyroMag > MOTION_THRESHOLD && now - lastRecognitionTime > RECOGNITION_COOLDOWN) {
+      isDetecting = true;
+      motionStart = now;
+      peakEnergy = gyroMag;
+    }
+  } else {
+    // Track peak energy
+    if (gyroMag > peakEnergy) peakEnergy = gyroMag;
+    
+    const duration = now - motionStart;
+    
+    if (gyroMag < MOTION_END && duration > 80) {
+      isDetecting = false;
+      lastRecognitionTime = now;
+      
+      // Validate: enough energy and reasonable duration
+      const isValidPunch = peakEnergy >= MIN_PEAK_ENERGY && duration >= 50 && duration <= 600;
+      
+      if (modelLoaded && isValidPunch) {
+        recognizeTF().then(result => {
+          if (result && result.isValid) {
+            dealDamage(result.gesture);
+          }
+        });
+      }
+      
+      peakEnergy = 0;
+    } else if (duration > 500) {
+      // Timeout
+      isDetecting = false;
+      peakEnergy = 0;
+    }
+  }
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ANIMATION LOOP
+// ══════════════════════════════════════════════════════════════════════════════
+let tick = 0;
+
+function animate() {
+  requestAnimationFrame(animate);
+  tick++;
+  
+  // Update particles
+  updateParticles();
+  
+  // Banana idle animation
+  if (!gameOver) {
+    bananaGroup.position.y = -0.4 + Math.sin(tick * 0.03) * 0.03;
+    bananaGroup.rotation.y = Math.sin(tick * 0.02) * 0.05;
+  }
+  
+  // Gloves idle sway
+  if (!gloveState.left.punching) {
+    leftPlayerGlove.position.y = 1 + Math.sin(tick * 0.04) * 0.03;
+  }
+  if (!gloveState.right.punching) {
+    rightPlayerGlove.position.y = 1 + Math.sin(tick * 0.04 + Math.PI) * 0.03;
+  }
+  
+  // Combo timeout check
+  if (comboCount > 0 && performance.now() - lastComboTime > COMBO_TIMEOUT) {
+    comboCount = 0;
+    updateCombo();
+  }
+  
+  renderer.render(scene, camera);
+}
+
+// Init
+setLang('ru');
+updateHP();
+updateCombo();
+animate();
+
+// Make functions global for onclick handlers
+window.setLang = setLang;
+window.connectBLE = connectBLE;
+window.loadModel = loadModel;
+window.restartGame = restartGame;
+</script>
+</body>
+</html>
