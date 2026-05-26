@@ -75,6 +75,16 @@
 - Банан имеет **1000 HP** — уничтожьте его!
 - Следите за **комбо-счётчиком** — чем больше ударов подряд, тем ярче цвет.
 
+### О проекте
+
+Это **демонстрационный проект**, показывающий, что M5Stack StickC Plus2 / StickS3 можно использовать не только как IoT-устройство, но и как **полноценный моушн-контроллер** — по аналогии с Nintendo Wii Remote. Встроенный IMU (гироскоп + акселерометр) в связке с Web Bluetooth и машинным обучением прямо в браузере открывает широкие возможности: от игр до жестового управления реальными устройствами.
+
+Проект намеренно сделан простым и самодостаточным — всё работает через два HTML-файла без серверной части. Берите за основу, экспериментируйте, делайте своё!
+
+### Лицензия
+
+Проект полностью свободный — **Public Domain / Unlicense**. Используйте код в любых целях без ограничений: копируйте, модифицируйте, распространяйте, используйте в коммерческих проектах. Никаких условий, никаких уведомлений.
+
 ---
 ---
 
@@ -146,6 +156,16 @@ A browser-based 3D boxing game where you fight a banana character using a real M
 - The banana has **1000 HP** — destroy it!
 - Watch the **combo counter** — the more consecutive hits, the brighter it glows.
 
+### About this project
+
+This is a **proof-of-concept demo** showing that the M5Stack StickC Plus2 / StickS3 can be used not just as an IoT device but as a **full motion controller** — similar to a Nintendo Wii Remote. The built-in IMU (gyroscope + accelerometer) combined with Web Bluetooth and in-browser machine learning opens up a wide range of possibilities: from games to gesture-driven control of real hardware.
+
+The project is intentionally kept simple and self-contained — everything runs from two HTML files with no backend. Use it as a starting point, experiment freely, and build your own!
+
+### License
+
+This project is completely free — **Public Domain / Unlicense**. Use the code for any purpose without restriction: copy, modify, distribute, use in commercial projects. No conditions, no attribution required.
+
 ---
 ---
 
@@ -216,4 +236,13 @@ A browser-based 3D boxing game where you fight a banana character using a real M
 
 - 香蕉有 **1000 HP** — 将它击倒！
 - 注意右上角的**连击计数器** — 连续击中越多，颜色越亮。
->>>>>>> 21867c2 (Add trilingual README with project description and usage instructions)
+
+### 关于本项目
+
+这是一个**概念验证演示项目**，旨在展示 M5Stack StickC Plus2 / StickS3 不仅可以作为物联网设备使用，还能作为**完整的体感控制器**——类似于任天堂 Wii Remote。内置 IMU（陀螺仪 + 加速度计）结合 Web Bluetooth 和浏览器内机器学习，开辟了广泛的应用可能：从游戏到手势控制真实硬件设备。
+
+本项目刻意保持简单独立——仅通过两个 HTML 文件运行，无需后端。欢迎以此为基础自由实验，开发属于你自己的项目！
+
+### 许可证
+
+本项目完全自由开放 — **Public Domain / Unlicense**。可将代码用于任何目的，不受任何限制：复制、修改、分发、用于商业项目均可。无需任何条件，无需注明出处。
