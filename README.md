@@ -1,6 +1,5 @@
-# 🍌 Stick Banana Boxing
+#  Stick Banana Boxing
 
-<img width="1194" height="896" alt="Banana Boxing" src="https://github.com/user-attachments/assets/13d89c62-f1cd-4f81-beb4-bd89904c5888" />
 <img width="1194" height="896" alt="Banana Boxing" src="https://github.com/user-attachments/assets/87fb8913-bae4-4381-a8a0-e972ea0dc18e" />
 
 **RU** | [EN](#-banana-boxing-en) | [中文](#-banana-boxing-中文)
