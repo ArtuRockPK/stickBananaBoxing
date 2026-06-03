@@ -1,6 +1,8 @@
 #  Stick Banana Boxing
 
-**RU** | [EN](#-banana-boxing--en) | [中文](#-banana-boxing-中文)
+<img width="1194" height="896" alt="Banana Boxing" src="https://github.com/user-attachments/assets/87fb8913-bae4-4381-a8a0-e972ea0dc18e" />
+
+**RU** | [EN](#-banana-boxing--en) | [中文](#chinese)
 
 ---
 
@@ -168,6 +170,7 @@ This project is completely free — **Public Domain / Unlicense**. Use the code 
 ---
 ---
 
+<a name="chinese"></a>
 ## 🍌 Banana Boxing — 中文
 
 这是一款基于浏览器的3D拳击游戏，使用真实的M5Stack运动控制器与香蕉角色对战。控制器通过蓝牙传输陀螺仪和加速度计数据，TensorFlow.js神经网络识别出击拳类型并在游戏中进行动画展示。
